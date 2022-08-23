@@ -237,4 +237,41 @@ contract xERC4626Test is DSTestPlus {
         require(xToken.totalAssets() == combined2);
         require(xToken.convertToAssets(seed) == combined2);
     }
+    
+    /// @dev test redeem shares mid rewards cycle
+    function testRedeemMidRewardsCycle() public {
+        uint128 seed = 1000;
+        uint128 reward = 100;
+
+        token.mint(address(this), seed);
+        token.approve(address(xToken), seed);
+
+        // first seed pool
+        xToken.deposit(seed, address(this));
+        require(xToken.totalAssets() == seed, "seed");
+
+        // mint rewards to pool
+        token.mint(address(xToken), reward);
+        require(xToken.lastRewardAmount() == 0, "reward");
+        require(xToken.totalAssets() == seed, "totalassets");
+        require(xToken.convertToAssets(seed) == seed); // 1:1 still
+
+        // sync rewards
+        xToken.syncRewards();
+        require(xToken.lastRewardAmount() == reward);
+        require(xToken.totalAssets() == seed);
+        require(xToken.convertToAssets(seed) == seed); // 1:1 still
+
+        // skip half a rewards cycle
+        hevm.warp(block.timestamp + 500);
+        require(xToken.lastRewardAmount() == reward);
+        require(xToken.totalAssets() == uint256(seed) + (reward / 2));
+        require(xToken.convertToAssets(seed) == uint256(seed) + (reward / 2)); // half rewards added
+        require(xToken.convertToShares(uint256(seed) + (reward / 2)) == seed); // half rewards added
+
+        assertEq(xToken.balanceOf(address(this)), seed, "verify shares");
+
+        // attempt to redeem all shares which fails
+        xToken.redeem(seed, address(this), address(this));
+    }
 }
